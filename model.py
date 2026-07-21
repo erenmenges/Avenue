@@ -38,7 +38,7 @@ class TransformerBlock(nn.Module):
         self.D_h = D//H
         assert self.D_h % 2 == 0
         self.H = H
-        self.RoPE = RoPE
+        self.rope = RoPE
 
         self.Q_layer = nn.Linear(in_features=D, out_features=D, bias=False)  ### layernorm already acts like bias
         self.K_layer = nn.Linear(in_features=D, out_features=D, bias=False)  ### layernorm already acts like bias
@@ -56,7 +56,7 @@ class TransformerBlock(nn.Module):
         Q = self.Q_layer(X).reshape(X.shape[0], X.shape[1], -1, self.D_h).permute(0, 2, 1, 3)  ### (B, N, D)-->(B, N, D)-->(B, N, H, D_h)-->(B, H, N, D_h)
         K = self.K_layer(X).reshape(X.shape[0], X.shape[1], -1, self.D_h).permute(0, 2, 1, 3)  ### (B, N, D)-->(B, N, D)-->(B, N, H, D_h)-->(B, H, N, D_h)
         V = self.V_layer(X).reshape(X.shape[0], X.shape[1], -1, self.D_h).permute(0, 2, 1, 3)  ### (B, N, D)-->(B, N, D)-->(B, N, H, D_h)-->(B, H, N, D_h)
-        return (self.RoPE.apply_rope(Q), self.RoPE.apply_rope(K), V)
+        return (self.rope.apply_rope(Q), self.rope.apply_rope(K), V)
 
 
     def forward(self, X: torch.Tensor) -> torch.Tensor:

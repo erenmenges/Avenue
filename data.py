@@ -8,11 +8,11 @@ rng = np.random.default_rng(seed=config.SEED)
 val_bin_arr = np.memmap(config.VAL_BIN, dtype=config.TOKEN_DTYPE, mode="r")
 train_bin_arr = np.memmap(config.TRAIN_BIN, dtype=config.TOKEN_DTYPE, mode="r")
 
-def get_batch(bin: str):
+def get_batch(split: str):
     """
     Creates a random batch of SEQ_LEN + 1.
     """
-    bin_arr = val_bin_arr if bin == "val" else train_bin_arr
+    bin_arr = val_bin_arr if split == "val" else train_bin_arr
 
     starts = rng.integers(low=0, high=len(bin_arr) - config.SEQ_LEN, size=config.BATCH_SIZE)
 

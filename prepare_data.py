@@ -5,10 +5,9 @@ from pathlib import Path
 from datasets import load_dataset
 import numpy as np
 import json
+from dataset import get_dataset
 
-ds = load_dataset(
-    "HuggingFaceFW/fineweb-edu", name= "sample-10BT", split="train", cache_dir=str(config.CACHE_DIR),
-)
+ds = get_dataset()
 
 tokenizer = Tokenizer.from_file(str(config.TOKENIZER_PATH))
 

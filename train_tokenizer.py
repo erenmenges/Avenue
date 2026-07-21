@@ -1,26 +1,20 @@
 from datasets import load_dataset
 from pathlib import Path
 from tokenizers import Tokenizer, models, trainers, pre_tokenizers, decoders
-
-data_path = Path(__file__).parent / "data"
-cache_dir = data_path / "cache"
-corpus_path = data_path / "tokenizer_corpus.txt"
-tokenizer_path = data_path / "tokenizer.json"
-
-ds = load_dataset(
-    "HuggingFaceFW/fineweb-edu", name= "sample-10BT", split="train", cache_dir=str(cache_dir),
-)
+from dataset import get_dataset
+import config
 
 def sample_for_tokenizer():
     """
     Creates tokenizer corpus for the next step: tokenizer training.
     """
+    ds = get_dataset()
     bytes_written = 0
     total_docs_written = 0
 
     next_milestone = 3e9
 
-    with open(corpus_path, "w", encoding="utf-8") as f:
+    with open(config.TOKENIZER_CORPUS_PATH, "w", encoding="utf-8") as f:
         for i in range(0, len(ds)):
             example = ds[i]
             text = example["text"].replace("\n", " ")
@@ -41,9 +35,6 @@ def train_tokenizer(vocab_size: int = 16_384, special_tokens: list[str] | None =
     Trains tokenizer with BPE.
     """
 
-    data_dir = Path(__file__).parent / "data"
-    corpus_path = data_dir / "tokenizer_corpus.txt"
-
     special_tokens = ["<|endoftext|>"] if special_tokens is None else special_tokens
 
     tokenizer = Tokenizer(models.BPE(byte_fallback=False))
@@ -56,8 +47,8 @@ def train_tokenizer(vocab_size: int = 16_384, special_tokens: list[str] | None =
                                     initial_alphabet=pre_tokenizers.ByteLevel.alphabet(),
                                     show_progress=True)   ### set up the trainer
     
-    tokenizer.train([str(corpus_path)], trainer)
-    tokenizer.save(str(data_dir / "tokenizer.json"))
+    tokenizer.train([str(config.TOKENIZER_CORPUS_PATH)], trainer)
+    tokenizer.save(str(config.TOKENIZER_PATH))
 
     print("DONE: Training tokenizer.")
     print(f"Tokenizer vocab size: {tokenizer.get_vocab_size()}")
@@ -67,7 +58,8 @@ def measure_compression() -> float:
     """
     Measures the average byte per token from the training data.
     """
-    tokenizer = Tokenizer.from_file(str(tokenizer_path))
+    tokenizer = Tokenizer.from_file(str(config.TOKENIZER_PATH))
+    ds = get_dataset()
 
     total_bytes = 0
     total_tokens = 0
@@ -97,8 +89,8 @@ def measure_compression() -> float:
 
 
 if __name__ == "__main__":
-    if not corpus_path.exists():
+    if not config.TOKENIZER_CORPUS_PATH.exists():
         sample_for_tokenizer()
-    if not tokenizer_path.exists():
+    if not config.TOKENIZER_PATH.exists():
         train_tokenizer()
     measure_compression()
