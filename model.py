@@ -1,9 +1,11 @@
+import config
 import torch
 from torch import nn
 import torch.nn.functional as F
+import math
 
 class RoPE(nn.Module):
-    def __init__(self, D_h: int, max_seq_len: int = 1024, base: float = 10000.0):
+    def __init__(self, D_h: int, max_seq_len: int = config.SEQ_LEN, base: float = 10000.0):
         super().__init__()
         positions = torch.arange(0, max_seq_len)
         theta_tensor = base ** (-torch.arange(0, D_h, 2).float() / D_h)
@@ -16,6 +18,7 @@ class RoPE(nn.Module):
         self.register_buffer("S", S)
     
     def apply_rope(self, X: torch.Tensor):
+        assert X.shape[-2] <= self.C.shape[0], "sequence longer than RoPE positions table"
         x_values = X[..., 0::2]  ### (B, H, N, D_h/2)
         y_values = X[..., 1::2]  ### (B, H, N, D_h/2)
 
@@ -33,19 +36,23 @@ class TransformerBlock(nn.Module):
         super().__init__()
 
         self.D_h = D//H
+        assert self.D_h % 2 == 0
         self.H = H
         self.RoPE = RoPE
 
-        self.Q_layer = nn.Linear(in_features=D, out_features=D)
-        self.K_layer = nn.Linear(in_features=D, out_features=D)
-        self.V_layer = nn.Linear(in_features=D, out_features=D)
-        self.O_layer = nn.Linear(in_features=D, out_features=D)
+        self.Q_layer = nn.Linear(in_features=D, out_features=D, bias=False)  ### layernorm already acts like bias
+        self.K_layer = nn.Linear(in_features=D, out_features=D, bias=False)  ### layernorm already acts like bias
+        self.V_layer = nn.Linear(in_features=D, out_features=D, bias=False)  ### layernorm already acts like bias
+        self.O_layer = nn.Linear(in_features=D, out_features=D, bias=False)
 
         self.ln1 = nn.LayerNorm(D)
         self.ln2 = nn.LayerNorm(D)
-        self.MLP = nn.Sequential(nn.Linear(in_features=D, out_features=4*D), nn.ReLU(), nn.Linear(in_features=4*D, out_features=D))
+        self.MLP = nn.Sequential(nn.Linear(in_features=D, out_features=4*D, bias=False), nn.GELU(), nn.Linear(in_features=4*D, out_features=D, bias=False))
 
     def compute_qkv(self, X: torch.Tensor) -> tuple:
+        """
+        computes qkv values to pass to f.sdpa.
+        """
         Q = self.Q_layer(X).reshape(X.shape[0], X.shape[1], -1, self.D_h).permute(0, 2, 1, 3)  ### (B, N, D)-->(B, N, D)-->(B, N, H, D_h)-->(B, H, N, D_h)
         K = self.K_layer(X).reshape(X.shape[0], X.shape[1], -1, self.D_h).permute(0, 2, 1, 3)  ### (B, N, D)-->(B, N, D)-->(B, N, H, D_h)-->(B, H, N, D_h)
         V = self.V_layer(X).reshape(X.shape[0], X.shape[1], -1, self.D_h).permute(0, 2, 1, 3)  ### (B, N, D)-->(B, N, D)-->(B, N, H, D_h)-->(B, H, N, D_h)
@@ -53,6 +60,9 @@ class TransformerBlock(nn.Module):
 
 
     def forward(self, X: torch.Tensor) -> torch.Tensor:
+        """
+        one transformer block. pre-norm layernorm and residuals.
+        """
         B, N = X.shape[0], X.shape[-2]
         Q, K, V = self.compute_qkv(self.ln1(X))  ### pre-norm layernorm 1 before attention, this keeps softmax healthy
         sdpa_output = F.scaled_dot_product_attention(query=Q, key=K, value=V, is_causal=True)  ### (B, H, N, D_h)
@@ -80,7 +90,29 @@ class Transformer(nn.Module):
         self.main = nn.Sequential(*layers)
 
         self.ln_final = nn.LayerNorm(D)
-        self.output_head = nn.Linear(in_features=D, out_features=V)
+        self.output_head = nn.Linear(in_features=D, out_features=V, bias=False)  ### bias=False like gpt-2. 
+
+        self.output_head.weight = self.embeddings.weight  ### weight tying - embeddings and final head serve the same purpose but opposite directions
+
+        # init scaling for everything except layernorm
+        self.apply(self._init_weights)
+
+        # init scaling for residuals, so variance doesn't explode
+        for name, p in self.named_parameters():
+            if name.endswith("O_layer.weight") or name.endswith("MLP.2.weight"):
+                nn.init.normal_(p, mean=0.0, std=0.02 / math.sqrt(2 * K))
+
+    def _init_weights(self, module):
+        """
+        scale every parameter except layernorm so that std=0.02 
+        """
+        if isinstance(module, nn.Linear):
+            nn.init.normal_(module.weight, mean=0.0, std=0.02)
+            if module.bias is not None:
+                nn.init.zeros_(module.bias)
+        elif isinstance(module, nn.Embedding):
+            nn.init.normal_(module.weight, mean=0.0, std=0.02)
+            
 
     def forward(self, X: torch.Tensor):
         embedded_X = self.embeddings(X)  ### (B,N) --> (B,N,D)
