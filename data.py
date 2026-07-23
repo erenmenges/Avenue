@@ -3,7 +3,8 @@ import config
 from pathlib import Path
 import torch
 
-rng = np.random.default_rng(seed=config.SEED)
+train_rng = np.random.default_rng(seed=config.SEED)
+val_rng = np.random.default_rng(seed=config.SEED + 100)
 
 val_bin_arr = np.memmap(config.VAL_BIN, dtype=config.TOKEN_DTYPE, mode="r")
 train_bin_arr = np.memmap(config.TRAIN_BIN, dtype=config.TOKEN_DTYPE, mode="r")
@@ -12,6 +13,7 @@ def get_batch(split: str):
     """
     Creates a random batch of SEQ_LEN + 1.
     """
+    rng = train_rng if split == "train" else val_rng
     bin_arr = val_bin_arr if split == "val" else train_bin_arr
 
     starts = rng.integers(low=0, high=len(bin_arr) - config.SEQ_LEN, size=config.BATCH_SIZE)
