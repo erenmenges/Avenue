@@ -3,11 +3,15 @@ import config
 from pathlib import Path
 import torch
 
-train_rng = np.random.default_rng(seed=config.SEED)
-val_rng = np.random.default_rng(seed=config.SEED + 100)
-
 val_bin_arr = np.memmap(config.VAL_BIN, dtype=config.TOKEN_DTYPE, mode="r")
 train_bin_arr = np.memmap(config.TRAIN_BIN, dtype=config.TOKEN_DTYPE, mode="r")
+
+def reset_rngs():
+    global train_rng, val_rng
+    train_rng = np.random.default_rng(seed=config.SEED)
+    val_rng = np.random.default_rng(seed=config.SEED + 100)
+
+reset_rngs()
 
 def get_batch(split: str):
     """

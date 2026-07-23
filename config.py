@@ -8,6 +8,7 @@ PROJECT_ROOT = Path(__file__).parent
 DATA_DIR = PROJECT_ROOT / "data"
 CACHE_DIR = DATA_DIR / "cache"
 CHECKPOINT_DIR = PROJECT_ROOT / "checkpoints"
+METRICS_DIR = PROJECT_ROOT / "metrics"
 
 TOKENIZER_CORPUS_PATH = DATA_DIR / "tokenizer_corpus.txt"
 TOKENIZER_PATH = DATA_DIR / "tokenizer.json"
@@ -27,13 +28,12 @@ TOKEN_DTYPE = np.uint16
 SEQ_LEN = 1024
 BATCH_SIZE = 64
 
-K = 4
+K = 8
 D = 256
 H = 8
-TRAINING_TOKEN_BUDGET = 146_000_000
+TRAINING_TOKEN_BUDGET = 200_000_000
 MAX_STEPS = TRAINING_TOKEN_BUDGET // (SEQ_LEN * BATCH_SIZE) 
 
 PEAK_LR = 1e-3
-MIN_LR = PEAK_LR / 10
 WARMUP_STEPS = max(1, int(0.01 * MAX_STEPS))  ### max(1, ...) guarantees at least one warmup steps when total steps are <100
 
