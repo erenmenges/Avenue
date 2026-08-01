@@ -85,9 +85,6 @@ def measure_compression() -> float:
     print(f"DONE: Measuring avg bytes per token. Avg bytes per token: {average_bytes_per_token}, documents sampled: {docs_processed}")
     return average_bytes_per_token
 
-
-
-
 if __name__ == "__main__":
     if not config.TOKENIZER_CORPUS_PATH.exists():
         sample_for_tokenizer()

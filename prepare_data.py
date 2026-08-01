@@ -25,12 +25,15 @@ def pack(start_index: int, output_path: Path, token_budget: int):
     buffer_size = 10_000_000
     buffer = []
 
+    bytes_written = 0
     tokens_written = 0
     last_index = None
 
     with open(output_path, "wb") as f:
         for i in range(start_index, len(ds), batch_size):
             texts = ds[i : i + batch_size]["text"]
+
+            bytes_written += sum(len(t.encode("utf-8")) for t in texts)
 
             encoded_batch = tokenizer.encode_batch(texts)
 
@@ -57,15 +60,19 @@ def pack(start_index: int, output_path: Path, token_budget: int):
     
     time_taken = time.perf_counter() - start_time
     print(f"DONE: Packing {str(output_path)}, Time elapsed packing: {time_taken}s")
-    return (tokens_written, last_index)
+    return (tokens_written, bytes_written, last_index)
 
 def prepare(val_token_budget: int, train_token_budget: int):
-    val_n_tokens_written, val_last_index = pack(0, config.VAL_BIN, val_token_budget)
-    train_n_tokens_written, train_last_index = pack(val_last_index + 1, config.TRAIN_BIN, train_token_budget)
+    val_n_tokens_written, val_bytes_written, val_last_index = pack(0, config.VAL_BIN, val_token_budget)
+    train_n_tokens_written, train_bytes_written, train_last_index = pack(val_last_index + 1, config.TRAIN_BIN, train_token_budget)
 
     manifest = {"val_n_tokens_written": val_n_tokens_written,
+                "val_bytes_written": val_bytes_written,
+                "val_bpt": val_bytes_written / val_n_tokens_written,
                 "val_last_index": val_last_index,
                 "train_n_tokens_written": train_n_tokens_written,
+                "train_bytes_written": train_bytes_written,
+                "train_bpt": train_bytes_written / train_n_tokens_written,
                 "train_last_index": train_last_index}
     
     # verify bin correctness
@@ -84,7 +91,7 @@ def verify(bin_path: Path, reported_tokens: int):
     print(f"IN PROGRESS: Verify {str(bin_path)}")
 
     # does token number match or not
-    n_tokens = bin_path.stat().st_size // 2
+    n_tokens = bin_path.stat().st_size // np.dtype(config.TOKEN_DTYPE).itemsize
     print(f"Actual number of tokens: {n_tokens}, reported tokens: {reported_tokens}")
 
     bin_arr = np.memmap(bin_path, dtype=config.TOKEN_DTYPE, mode="r")

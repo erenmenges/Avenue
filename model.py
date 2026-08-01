@@ -25,29 +25,77 @@ class RoPE(nn.Module):
         new_x_values = x_values * self.C[:X.shape[-2]] - y_values * self.S[:X.shape[-2]]  ### (B, H, N, D_h/2)
         new_y_values = x_values * self.S[:X.shape[-2]] + y_values * self.C[:X.shape[-2]]  ### (B, H, N, D_h/2)
 
-        result = torch.zeros_like(X)
-        result[..., 0::2] = new_x_values
-        result[..., 1::2] = new_y_values
+        result = torch.stack((new_x_values, new_y_values), dim=-1).flatten(-2)  ### interleave naturally
 
         return result
 
-class TransformerBlock(nn.Module):
-    def __init__(self, D: int, H: int, RoPE: RoPE):
+# ternary functions and class
+
+def quantize_weights(W: torch.Tensor):
+    quantized_W = W.float()  ### cast to fp32
+    abs_mu = quantized_W.abs().mean(dim=-1, keepdim=True)  ### shape: (..., 1)
+    abs_mu = torch.clamp(abs_mu, min=1e-5).detach()
+    quantized_W = quantized_W / abs_mu  ### drop the scale. each param is now "how many avg weights is this?"
+    quantized_W = torch.round(quantized_W)
+    quantized_W = torch.clamp(quantized_W, min=-1, max=1)
+    return quantized_W.to(W.dtype), abs_mu.squeeze(dim=-1)
+
+def quantize_activations(x: torch.Tensor):
+    quantized_x = x.float()
+    abs_max = quantized_x.abs().amax(dim=-1, keepdim=True)  ### shape: (..., 1)
+    abs_max = torch.clamp(abs_max, min=1e-5)
+    scale = abs_max/127  ### scale: size of an integer step
+    quantized_x = quantized_x / scale
+    quantized_x = torch.round(quantized_x)
+    quantized_x = torch.clamp(quantized_x, min=-128, max=127)
+    return quantized_x.to(x.dtype), scale
+
+class Bitlinear(nn.Module):
+    def __init__(self, in_features: int, out_features: int):
         super().__init__()
+
+        self.ln = nn.RMSNorm((in_features,))
+        W_tensor = 0.02 * torch.randn((out_features, in_features))
+        self.weight = nn.Parameter(W_tensor)
+
+    def forward(self, x: torch.Tensor):
+        forward_x = self.ln(x)
+        x_quantized, x_scale = quantize_activations(forward_x)  ### x is quantized to int8, W to ternary
+        W_quantized, w_scale = quantize_weights(self.weight)
+        W_quantized = self.weight + (W_quantized - self.weight).detach()   ### forward uses quantized, backward uses latent weights
+        x_quantized = forward_x + (x_quantized - forward_x).detach()
+        y = x_quantized @ W_quantized.T
+        return (y * w_scale * x_scale).to(x.dtype)
+
+
+
+class TransformerBlock(nn.Module):
+    def __init__(self, D: int, H: int, RoPE: RoPE, ternary: bool = False):
+        super().__init__()
+        self.ternary = ternary
 
         self.D_h = D//H
         assert self.D_h % 2 == 0
         self.H = H
         self.rope = RoPE
+        if not ternary:
+            self.Q_layer = nn.Linear(in_features=D, out_features=D, bias=False)  ### layernorm already acts like bias
+            self.K_layer = nn.Linear(in_features=D, out_features=D, bias=False)  ### layernorm already acts like bias
+            self.V_layer = nn.Linear(in_features=D, out_features=D, bias=False)  ### layernorm already acts like bias
+            self.O_layer = nn.Linear(in_features=D, out_features=D, bias=False)
+        else:
+            self.Q_layer = Bitlinear(in_features=D, out_features=D)
+            self.K_layer = Bitlinear(in_features=D, out_features=D)
+            self.V_layer = Bitlinear(in_features=D, out_features=D)
+            self.O_layer = Bitlinear(in_features=D, out_features=D)
 
-        self.Q_layer = nn.Linear(in_features=D, out_features=D, bias=False)  ### layernorm already acts like bias
-        self.K_layer = nn.Linear(in_features=D, out_features=D, bias=False)  ### layernorm already acts like bias
-        self.V_layer = nn.Linear(in_features=D, out_features=D, bias=False)  ### layernorm already acts like bias
-        self.O_layer = nn.Linear(in_features=D, out_features=D, bias=False)
+        if not ternary:
+            self.ln1 = nn.RMSNorm(D)
+            self.ln2 = nn.RMSNorm(D)
+            self.MLP = nn.Sequential(nn.Linear(in_features=D, out_features=4*D, bias=False), nn.GELU(), nn.Linear(in_features=4*D, out_features=D, bias=False))
+        else:
+            self.MLP = nn.Sequential(Bitlinear(in_features=D, out_features=4*D), nn.GELU(), Bitlinear(in_features=4*D, out_features=D))
 
-        self.ln1 = nn.LayerNorm(D)
-        self.ln2 = nn.LayerNorm(D)
-        self.MLP = nn.Sequential(nn.Linear(in_features=D, out_features=4*D, bias=False), nn.GELU(), nn.Linear(in_features=4*D, out_features=D, bias=False))
 
     def compute_qkv(self, X: torch.Tensor) -> tuple:
         """
@@ -64,18 +112,18 @@ class TransformerBlock(nn.Module):
         one transformer block. pre-norm layernorm and residuals.
         """
         B, N = X.shape[0], X.shape[-2]
-        Q, K, V = self.compute_qkv(self.ln1(X))  ### pre-norm layernorm 1 before attention, this keeps softmax healthy
+        Q, K, V = self.compute_qkv(self.ln1(X)) if not self.ternary else self.compute_qkv(X)  ### pre-norm layernorm 1 before attention, this keeps softmax healthy
         sdpa_output = F.scaled_dot_product_attention(query=Q, key=K, value=V, is_causal=True)  ### (B, H, N, D_h)
         sdpa_output = sdpa_output.permute(0,2,1,3).reshape(B, N, -1)  ### combine heads to make (B, N, D)
         output = self.O_layer(sdpa_output)  ### (B, N, D) = (B, N, D) @ (1, D, D)
         output = X + output  ### residual 1
-        output = output + self.MLP(self.ln2(output)) ### layernorm 2 before MLP, and residual 2
+        output = output + self.MLP(self.ln2(output)) if not self.ternary else output + self.MLP(output) ### layernorm 2 before MLP, and residual 2
         return output
 
 
 
 class Transformer(nn.Module):
-    def __init__(self, K: int, D: int, H: int, V: int):
+    def __init__(self, K: int, D: int, H: int, V: int, ternary: bool = False):
         super().__init__()
 
         self.embeddings = nn.Embedding(num_embeddings=V, embedding_dim=D)
@@ -85,11 +133,14 @@ class Transformer(nn.Module):
 
         layers = []
         for _ in range(K):
-            layers.append(TransformerBlock(D, H, self.RoPE))
+            if not ternary:
+                layers.append(TransformerBlock(D, H, self.RoPE))
+            else:
+                layers.append(TransformerBlock(D, H, self.RoPE, True))
 
         self.main = nn.Sequential(*layers)
 
-        self.ln_final = nn.LayerNorm(D)
+        self.ln_final = nn.RMSNorm(D)
         self.output_head = nn.Linear(in_features=D, out_features=V, bias=False)  ### bias=False like gpt-2. 
 
         self.output_head.weight = self.embeddings.weight  ### weight tying - embeddings and final head serve the same purpose but opposite directions
@@ -114,9 +165,11 @@ class Transformer(nn.Module):
             nn.init.normal_(module.weight, mean=0.0, std=0.02)
             
 
-    def forward(self, X: torch.Tensor):
+    def forward(self, X: torch.Tensor, return_hidden: bool = False):
         embedded_X = self.embeddings(X)  ### (B,N) --> (B,N,D)
         intermediate = self.main(embedded_X)
         intermediate = self.ln_final(intermediate)
+        if return_hidden:
+            return intermediate
         return self.output_head(intermediate)
     

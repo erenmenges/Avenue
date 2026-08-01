@@ -26,14 +26,15 @@ VOCAB_SIZE = 16384
 TOKEN_DTYPE = np.uint16
 
 SEQ_LEN = 1024
-BATCH_SIZE = 64
+BATCH_SIZE = 32
+
 
 K = 8
 D = 256
-H = 8
-TRAINING_TOKEN_BUDGET = 200_000_000
+H = 4
+TRAINING_TOKEN_BUDGET = 210_000_000
 MAX_STEPS = TRAINING_TOKEN_BUDGET // (SEQ_LEN * BATCH_SIZE) 
 
-PEAK_LR = 1e-3
+PEAK_LR = 2.8e-3
 WARMUP_STEPS = max(1, int(0.01 * MAX_STEPS))  ### max(1, ...) guarantees at least one warmup steps when total steps are <100
 
