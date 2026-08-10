@@ -30,11 +30,12 @@ BATCH_SIZE = 32
 
 
 K = 8
-D = 256
+D = 384
 H = 4
-TRAINING_TOKEN_BUDGET = 210_000_000
+TRAINING_TOKEN_BUDGET = 409_000_000
 MAX_STEPS = TRAINING_TOKEN_BUDGET // (SEQ_LEN * BATCH_SIZE) 
 
-PEAK_LR = 2.8e-3
+MUON_LR = 1.87e-3
+ADAM_LR = 1.87e-3
 WARMUP_STEPS = max(1, int(0.01 * MAX_STEPS))  ### max(1, ...) guarantees at least one warmup steps when total steps are <100
 

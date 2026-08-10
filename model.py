@@ -38,17 +38,17 @@ def quantize_weights(W: torch.Tensor):
     quantized_W = quantized_W / abs_mu  ### drop the scale. each param is now "how many avg weights is this?"
     quantized_W = torch.round(quantized_W)
     quantized_W = torch.clamp(quantized_W, min=-1, max=1)
-    return quantized_W.to(W.dtype), abs_mu.squeeze(dim=-1)
+    return quantized_W.to(W.dtype) * abs_mu
 
 def quantize_activations(x: torch.Tensor):
     quantized_x = x.float()
     abs_max = quantized_x.abs().amax(dim=-1, keepdim=True)  ### shape: (..., 1)
-    abs_max = torch.clamp(abs_max, min=1e-5)
+    abs_max = torch.clamp(abs_max, min=1e-5).detach()
     scale = abs_max/127  ### scale: size of an integer step
     quantized_x = quantized_x / scale
     quantized_x = torch.round(quantized_x)
     quantized_x = torch.clamp(quantized_x, min=-128, max=127)
-    return quantized_x.to(x.dtype), scale
+    return quantized_x.to(x.dtype) * scale
 
 class Bitlinear(nn.Module):
     def __init__(self, in_features: int, out_features: int):
@@ -60,12 +60,12 @@ class Bitlinear(nn.Module):
 
     def forward(self, x: torch.Tensor):
         forward_x = self.ln(x)
-        x_quantized, x_scale = quantize_activations(forward_x)  ### x is quantized to int8, W to ternary
-        W_quantized, w_scale = quantize_weights(self.weight)
+        x_quantized = quantize_activations(forward_x)  ### x is quantized to int8, W to ternary
+        W_quantized = quantize_weights(self.weight)
         W_quantized = self.weight + (W_quantized - self.weight).detach()   ### forward uses quantized, backward uses latent weights
         x_quantized = forward_x + (x_quantized - forward_x).detach()
         y = x_quantized @ W_quantized.T
-        return (y * w_scale * x_scale).to(x.dtype)
+        return y.to(x.dtype)
 
 
 

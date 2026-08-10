@@ -1,6 +1,5 @@
 import numpy as np
 import config
-from pathlib import Path
 import torch
 
 val_bin_arr = np.memmap(config.VAL_BIN, dtype=config.TOKEN_DTYPE, mode="r")

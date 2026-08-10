@@ -2,7 +2,6 @@ import time
 import config
 from tokenizers import Tokenizer
 from pathlib import Path
-from datasets import load_dataset
 import numpy as np
 import json
 from dataset import get_dataset
@@ -111,4 +110,4 @@ def verify(bin_path: Path, reported_tokens: int):
 
 if __name__ == "__main__":
     if not config.SPLIT_MANIFEST_PATH.exists():
-        prepare(val_token_budget=10_000_000, train_token_budget=600_000_000)
+        prepare(val_token_budget=30_000_000, train_token_budget=2_000_000_000)

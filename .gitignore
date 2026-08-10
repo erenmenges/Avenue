@@ -9,3 +9,4 @@ data/
 checkpoints/
 metrics/
 wandb/
+results.csv
