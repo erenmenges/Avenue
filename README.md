@@ -2,9 +2,10 @@
 Avenue is a family of small, ternary-native language models, trained entirely on a MacBook Pro. This repository contains   a model class, training pipeline, and an inference stack, all custom and written by me. The models provide weight-only quantization support for Post-Training Quantization (PTQ) and, most importantly, BitNet style support for Quantization-aware Training (QAT). 
 
 Avenue is named after the neighborhood I live in: East Village, NYC. The models come in different sizes:
-- Avenue A: 20M
+- Avenue A: 20M 
 - Avenue B: 40M
 - Avenue C: 60M
+Each model has two versions: FP and ternary. FP models are trained with full precision, like a regular language model. Ternary models are trained with a technique called Quantization-aware Training (QAT). The models are [available on HuggingFace](https://huggingface.co/erenmenges/Avenue/tree/main).
 
 The models are Chinchilla-optimal, trained with a parameter-token_budget ratio of 1:20. The models have been trained on FineWeb-Edu's 10BT subset on HuggingFace.
 
