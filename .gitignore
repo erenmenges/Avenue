@@ -10,3 +10,7 @@ checkpoints/
 metrics/
 wandb/
 results.csv
+ruff.toml
+mypy.ini
+.ruff_cache/
+.mypy_cache/

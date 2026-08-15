@@ -1,8 +1,8 @@
-from datasets import load_dataset
-from pathlib import Path
-from tokenizers import Tokenizer, models, trainers, pre_tokenizers, decoders
-from dataset import get_dataset
+from tokenizers import Tokenizer, decoders, models, pre_tokenizers, trainers
+
 import config
+from dataset import get_dataset
+
 
 def sample_for_tokenizer():
     """
@@ -15,7 +15,7 @@ def sample_for_tokenizer():
     next_milestone = 3e9
 
     with open(config.TOKENIZER_CORPUS_PATH, "w", encoding="utf-8") as f:
-        for i in range(0, len(ds)):
+        for i in range(len(ds)):
             example = ds[i]
             text = example["text"].replace("\n", " ")
             line = text + "\n"
@@ -23,14 +23,17 @@ def sample_for_tokenizer():
 
             total_docs_written += 1
             bytes_written += len(line.encode("utf-8"))
-            
+
             if bytes_written > next_milestone:
                 print(f"GB: {bytes_written / 1e9}, Docs written: {total_docs_written}")
                 next_milestone += 3e9
-        
+
     print("DONE: Sampling for tokenizer training")
 
-def train_tokenizer(vocab_size: int = 16_384, special_tokens: list[str] | None = None):
+
+def train_tokenizer(
+    vocab_size: int = config.VOCAB_SIZE, special_tokens: list[str] | None = None
+):
     """
     Trains tokenizer with BPE.
     """
@@ -38,15 +41,23 @@ def train_tokenizer(vocab_size: int = 16_384, special_tokens: list[str] | None =
     special_tokens = ["<|endoftext|>"] if special_tokens is None else special_tokens
 
     tokenizer = Tokenizer(models.BPE(byte_fallback=False))
-    tokenizer.pre_tokenizer = pre_tokenizers.Sequence([pre_tokenizers.Digits(individual_digits=True), 
-                                                       pre_tokenizers.ByteLevel(add_prefix_space=False)])  ### 
-    tokenizer.decoder = decoders.ByteLevel()  ### decode back to real text from internal mappings (e.g. space to weird G)
+    tokenizer.pre_tokenizer = pre_tokenizers.Sequence(
+        [
+            pre_tokenizers.Digits(individual_digits=True),
+            pre_tokenizers.ByteLevel(add_prefix_space=False),
+        ]
+    )  ###
+    tokenizer.decoder = (
+        decoders.ByteLevel()
+    )  ### decode back to real text from internal mappings (e.g. space to weird G)
 
-    trainer = trainers.BpeTrainer(vocab_size=vocab_size,
-                                    special_tokens=special_tokens,
-                                    initial_alphabet=pre_tokenizers.ByteLevel.alphabet(),
-                                    show_progress=True)   ### set up the trainer
-    
+    trainer = trainers.BpeTrainer(
+        vocab_size=vocab_size,
+        special_tokens=special_tokens,
+        initial_alphabet=pre_tokenizers.ByteLevel.alphabet(),
+        show_progress=True,
+    )  ### set up the trainer
+
     tokenizer.train([str(config.TOKENIZER_CORPUS_PATH)], trainer)
     tokenizer.save(str(config.TOKENIZER_PATH))
 
@@ -54,7 +65,8 @@ def train_tokenizer(vocab_size: int = 16_384, special_tokens: list[str] | None =
     print(f"Tokenizer vocab size: {tokenizer.get_vocab_size()}")
     print(tokenizer.encode("Hello New York from 2026!").tokens)
 
-def measure_compression() -> float:
+
+def measure_compression():
     """
     Measures the average byte per token from the training data.
     """
@@ -77,13 +89,15 @@ def measure_compression() -> float:
             total_tokens += sum(len(enc.ids) for enc in encodings)
             total_bytes += sum(len(text.encode("utf-8")) for text in batch)
             batch = []
-            
+
             if docs_processed > num_docs_to_sample:
                 break
-    
+
     average_bytes_per_token = float(total_bytes / total_tokens)
-    print(f"DONE: Measuring avg bytes per token. Avg bytes per token: {average_bytes_per_token}, documents sampled: {docs_processed}")
-    return average_bytes_per_token
+    print(
+        f"DONE: Measuring avg bytes per token. Avg bytes per token: {average_bytes_per_token}, documents sampled: {docs_processed}"
+    )
+
 
 if __name__ == "__main__":
     if not config.TOKENIZER_CORPUS_PATH.exists():

@@ -1,14 +1,14 @@
 from pathlib import Path
+
 import numpy as np
 
 HF_DATASET = "HuggingFaceFW/fineweb-edu"
-HF_CONFIG  = "sample-10BT"
+HF_CONFIG = "sample-10BT"
 
 PROJECT_ROOT = Path(__file__).parent
 DATA_DIR = PROJECT_ROOT / "data"
 CACHE_DIR = DATA_DIR / "cache"
 CHECKPOINT_DIR = PROJECT_ROOT / "checkpoints"
-METRICS_DIR = PROJECT_ROOT / "metrics"
 
 TOKENIZER_CORPUS_PATH = DATA_DIR / "tokenizer_corpus.txt"
 TOKENIZER_PATH = DATA_DIR / "tokenizer.json"
@@ -32,10 +32,6 @@ BATCH_SIZE = 32
 K = 8
 D = 384
 H = 4
-TRAINING_TOKEN_BUDGET = 409_000_000
-MAX_STEPS = TRAINING_TOKEN_BUDGET // (SEQ_LEN * BATCH_SIZE) 
 
 MUON_LR = 1.87e-3
 ADAM_LR = 1.87e-3
-WARMUP_STEPS = max(1, int(0.01 * MAX_STEPS))  ### max(1, ...) guarantees at least one warmup steps when total steps are <100
-

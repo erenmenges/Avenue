@@ -119,46 +119,39 @@ python prepare_data.py
 ```
 
 ### Train a model
-You can either do:
-1) Put your hyperparameters in config.py and do:
-```bash
-python train.py
-```
-or
-```bash
-python train.py --ternary
-```
-2) Pass your hyperparameters as CLI args:
+You can pass your hyperparameters as CLI args:
 
 ```bash
 python train.py --D 384 --K 8 --H 4 --token-budget 409000000 --muon-lr 1.9e-3 --adamw-lr 1.9e-3 --ternary
 ```
+D is the model dimension (width), K is the number of layers (depth), H is the number of attention heads, token-budget is how many tokens will it train for, muon_lr and adam_lr are learning rates. And if you want to train a ternary model, you can just pass --ternary.
+
 
 ### Resume training from a checkpoint
 ```bash
-python train.py --resume checkpoints/run_<id>/ckpt_20M_muon_m1.9e-03_a1.9e-03_step004800.pt
+python train.py --resume checkpoints/run_<id>_*/ckpt_20M_muon_m1.9e-03_a1.9e-03_step005000.pt
 ```
 I advise you use a program like "Amphetamine" to keep your Mac from going to sleep while the training runs.
 
 ### Inference
 ```bash
-python eval_inference.py checkpoints/run_<id>/final.pt
+python eval_inference.py checkpoints/run_<id>_*/final_*.pt
 ```
 You should see:
 ```
 Enter a prompt:
 ```
 
-The sampling parameters are the default settings I found worked the best. To change them, just change the default numbers in the function signature of predict() in eval_inference.py.
+The sampling parameters are the default settings I found worked the best. To change them, just change the default numbers in the argparse section in __main__ in eval_inference.py.
 
 ### Evaluation
 ```bash
-python final_results.py checkpoints/run_<id>/final.pt
+python final_results.py checkpoints/run_<id>_*/final_*.pt
 ```
 
 For PTQ:
 ```bash
-python final_results.py checkpoints/run_<id>/final.pt --ptq
+python final_results.py checkpoints/run_<id>_*/final_*.pt --ptq
 ```
 
 
