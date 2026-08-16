@@ -10,9 +10,7 @@ class AvenueData:
     def __init__(self, seed: int):
         self.seed = seed
         self.val_bin_arr = np.memmap(config.VAL_BIN, dtype=config.TOKEN_DTYPE, mode="r")
-        self.train_bin_arr = np.memmap(
-            config.TRAIN_BIN, dtype=config.TOKEN_DTYPE, mode="r"
-        )
+        self.train_bin_arr = np.memmap(config.TRAIN_BIN, dtype=config.TOKEN_DTYPE, mode="r")
         self.reset_rngs(split="both")
 
         with open(config.SPLIT_MANIFEST_PATH) as f:
@@ -41,9 +39,7 @@ class AvenueData:
         rng = self.train_rng if split == "train" else self.val_rng
         bin_arr = self.val_bin_arr if split == "val" else self.train_bin_arr
 
-        starts = rng.integers(
-            low=0, high=len(bin_arr) - config.SEQ_LEN, size=config.BATCH_SIZE
-        )
+        starts = rng.integers(low=0, high=len(bin_arr) - config.SEQ_LEN, size=config.BATCH_SIZE)
 
         batch = [bin_arr[start : start + config.SEQ_LEN + 1] for start in starts]
         batch = np.stack(batch).astype(np.int64)

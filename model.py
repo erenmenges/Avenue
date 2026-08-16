@@ -11,9 +11,7 @@ class RoPE(nn.Module):
     C: torch.Tensor  ### cos table
     S: torch.Tensor  ### sin table
 
-    def __init__(
-        self, D_h: int, max_seq_len: int = config.SEQ_LEN, base: float = 10000.0
-    ):
+    def __init__(self, D_h: int, max_seq_len: int = config.SEQ_LEN, base: float = 10000.0):
         super().__init__()
         positions = torch.arange(0, max_seq_len)
         theta_tensor = base ** (-torch.arange(0, D_h, 2).float() / D_h)
@@ -26,22 +24,14 @@ class RoPE(nn.Module):
         self.register_buffer("S", S)
 
     def apply_rope(self, X: torch.Tensor):
-        assert X.shape[-2] <= self.C.shape[0], (
-            "sequence longer than RoPE positions table"
-        )
+        assert X.shape[-2] <= self.C.shape[0], "sequence longer than RoPE positions table"
         x_values = X[..., 0::2]  ### (B, H, N, D_h/2)
         y_values = X[..., 1::2]  ### (B, H, N, D_h/2)
 
-        new_x_values = (
-            x_values * self.C[: X.shape[-2]] - y_values * self.S[: X.shape[-2]]
-        )  ### (B, H, N, D_h/2)
-        new_y_values = (
-            x_values * self.S[: X.shape[-2]] + y_values * self.C[: X.shape[-2]]
-        )  ### (B, H, N, D_h/2)
+        new_x_values = x_values * self.C[: X.shape[-2]] - y_values * self.S[: X.shape[-2]]  ### (B, H, N, D_h/2)
+        new_y_values = x_values * self.S[: X.shape[-2]] + y_values * self.C[: X.shape[-2]]  ### (B, H, N, D_h/2)
 
-        result = torch.stack((new_x_values, new_y_values), dim=-1).flatten(
-            -2
-        )  ### interleave naturally
+        result = torch.stack((new_x_values, new_y_values), dim=-1).flatten(-2)  ### interleave naturally
 
         return result
 
@@ -53,9 +43,7 @@ def quantize_weights(W: torch.Tensor):
     quantized_W = W.float()  ### cast to fp32
     abs_mu = quantized_W.abs().mean(dim=-1, keepdim=True)  ### shape: (..., 1)
     abs_mu = torch.clamp(abs_mu, min=1e-5).detach()
-    quantized_W = (
-        quantized_W / abs_mu
-    )  ### drop the scale. each param is now "how many avg weights is this?"
+    quantized_W = quantized_W / abs_mu  ### drop the scale. each param is now "how many avg weights is this?"
     quantized_W = torch.round(quantized_W)
     quantized_W = torch.clamp(quantized_W, min=-1, max=1)
     return quantized_W.to(W.dtype) * abs_mu
@@ -82,22 +70,16 @@ class Bitlinear(nn.Module):
 
     def forward(self, x: torch.Tensor):
         forward_x = self.ln(x)
-        x_quantized = quantize_activations(
-            forward_x
-        )  ### x is quantized to int8, W to ternary
+        x_quantized = quantize_activations(forward_x)  ### x is quantized to int8, W to ternary
         W_quantized = quantize_weights(self.weight)
-        W_quantized = (
-            self.weight + (W_quantized - self.weight).detach()
-        )  ### forward uses quantized, backward uses latent weights
+        W_quantized = self.weight + (W_quantized - self.weight).detach()  ### forward uses quantized, backward uses latent weights
         x_quantized = forward_x + (x_quantized - forward_x).detach()
         y = x_quantized @ W_quantized.T
         return y.to(x.dtype)
 
 
 class TransformerBlock(nn.Module):
-    def __init__(
-        self, D: int, H: int, positional_encoding: RoPE, ternary: bool = False
-    ):
+    def __init__(self, D: int, H: int, positional_encoding: RoPE, ternary: bool = False):
         super().__init__()
 
         self.D_h = D // H
@@ -108,14 +90,10 @@ class TransformerBlock(nn.Module):
         # for cleaner code, in ternary, we initialize the norms to be identity, since there are no extra norms in ternary and
         # each Bitlinear has its own RMSNorm.
         if ternary:
-            make_linear = lambda in_features, out_features: Bitlinear(
-                in_features, out_features
-            )
+            make_linear = lambda in_features, out_features: Bitlinear(in_features, out_features)
             make_norm = nn.Identity
         else:
-            make_linear = lambda in_features, out_features: nn.Linear(
-                in_features, out_features, bias=False
-            )
+            make_linear = lambda in_features, out_features: nn.Linear(in_features, out_features, bias=False)
             make_norm = lambda: nn.RMSNorm(D)
 
         self.Q_layer = make_linear(in_features=D, out_features=D)
@@ -135,21 +113,9 @@ class TransformerBlock(nn.Module):
         """
         computes qkv values to pass to f.sdpa.
         """
-        Q = (
-            self.Q_layer(X)
-            .reshape(X.shape[0], X.shape[1], -1, self.D_h)
-            .permute(0, 2, 1, 3)
-        )  ### (B, N, D)-->(B, N, D)-->(B, N, H, D_h)-->(B, H, N, D_h)
-        K = (
-            self.K_layer(X)
-            .reshape(X.shape[0], X.shape[1], -1, self.D_h)
-            .permute(0, 2, 1, 3)
-        )  ### (B, N, D)-->(B, N, D)-->(B, N, H, D_h)-->(B, H, N, D_h)
-        V = (
-            self.V_layer(X)
-            .reshape(X.shape[0], X.shape[1], -1, self.D_h)
-            .permute(0, 2, 1, 3)
-        )  ### (B, N, D)-->(B, N, D)-->(B, N, H, D_h)-->(B, H, N, D_h)
+        Q = self.Q_layer(X).reshape(X.shape[0], X.shape[1], -1, self.D_h).permute(0, 2, 1, 3)  ### (B, N, D)-->(B, N, D)-->(B, N, H, D_h)-->(B, H, N, D_h)
+        K = self.K_layer(X).reshape(X.shape[0], X.shape[1], -1, self.D_h).permute(0, 2, 1, 3)  ### (B, N, D)-->(B, N, D)-->(B, N, H, D_h)-->(B, H, N, D_h)
+        V = self.V_layer(X).reshape(X.shape[0], X.shape[1], -1, self.D_h).permute(0, 2, 1, 3)  ### (B, N, D)-->(B, N, D)-->(B, N, H, D_h)-->(B, H, N, D_h)
         return (self.rope.apply_rope(Q), self.rope.apply_rope(K), V)
 
     def forward(self, X: torch.Tensor) -> torch.Tensor:
@@ -157,20 +123,12 @@ class TransformerBlock(nn.Module):
         one transformer block. pre-norm layernorm and residuals.
         """
         B, N = X.shape[0], X.shape[-2]
-        Q, K, V = self.compute_qkv(
-            self.ln1(X)
-        )  ### pre-norm layernorm 1 before attention, this keeps softmax healthy
-        sdpa_output = F.scaled_dot_product_attention(
-            query=Q, key=K, value=V, is_causal=True
-        )  ### (B, H, N, D_h)
-        sdpa_output = sdpa_output.permute(0, 2, 1, 3).reshape(
-            B, N, -1
-        )  ### combine heads to make (B, N, D)
+        Q, K, V = self.compute_qkv(self.ln1(X))  ### pre-norm layernorm 1 before attention, this keeps softmax healthy
+        sdpa_output = F.scaled_dot_product_attention(query=Q, key=K, value=V, is_causal=True)  ### (B, H, N, D_h)
+        sdpa_output = sdpa_output.permute(0, 2, 1, 3).reshape(B, N, -1)  ### combine heads to make (B, N, D)
         output = self.O_layer(sdpa_output)  ### (B, N, D) = (B, N, D) @ (1, D, D)
         output = X + output  ### residual 1
-        output = output + self.MLP(
-            self.ln2(output)
-        )  ### layernorm 2 before MLP, and residual 2
+        output = output + self.MLP(self.ln2(output))  ### layernorm 2 before MLP, and residual 2
         return output
 
 
@@ -190,9 +148,7 @@ class Transformer(nn.Module):
         self.main = nn.Sequential(*layers)
 
         self.ln_final = nn.RMSNorm(D)
-        self.output_head = nn.Linear(
-            in_features=D, out_features=V, bias=False
-        )  ### bias=False like gpt-2.
+        self.output_head = nn.Linear(in_features=D, out_features=V, bias=False)  ### bias=False like gpt-2.
 
         self.output_head.weight = self.embeddings.weight  ### weight tying - embeddings and final head serve the same purpose but opposite directions
 

@@ -58,15 +58,9 @@ def save_checkpoint(
     }
     total_n_of_params = sum(param.numel() for param in lm.parameters()) / 1e6
     if not final:
-        save_path = (
-            run_dir
-            / f"ckpt_{total_n_of_params:.0f}M_muon_m{muon_lr:.1e}_a{adamw_lr:.1e}_step{step:06d}.pt"
-        )
+        save_path = run_dir / f"ckpt_{total_n_of_params:.0f}M_muon_m{muon_lr:.1e}_a{adamw_lr:.1e}_step{step:06d}.pt"
     else:
-        save_path = (
-            run_dir
-            / f"final_{total_n_of_params:.0f}M_{total_token_budget / 1e7:.0f}BT_muon_m{muon_lr:.1e}_a{adamw_lr:.1e}.pt"
-        )
+        save_path = run_dir / f"final_{total_n_of_params:.0f}M_{total_token_budget / 1e7:.0f}BT_muon_m{muon_lr:.1e}_a{adamw_lr:.1e}.pt"
     tmp_path = save_path.with_suffix(".tmp")
     torch.save(savedict, tmp_path)
     tmp_path.rename(save_path)
@@ -88,9 +82,7 @@ def build_optimizers(raw_lm: model.Transformer, muon_lr: float, adamw_lr: float)
             nondecay_params.append(p)
 
     total = len(muon_params) + len(decay_params) + len(nondecay_params)
-    assert total == len(list(raw_lm.parameters())), (
-        "not all parameters are in the lists"
-    )
+    assert total == len(list(raw_lm.parameters())), "not all parameters are in the lists"
     assert all(p.ndim == 2 for p in muon_params), "muon was fed something non 2d"
 
     muon_optimizer = torch.optim.Muon(
@@ -113,9 +105,7 @@ def build_optimizers(raw_lm: model.Transformer, muon_lr: float, adamw_lr: float)
         for g in optimizer.param_groups:
             g["base_lr"] = g["lr"]
 
-    print(
-        f"muon: {len(muon_params)} tensors | adamw decay: {len(decay_params)} | adamw nodecay: {len(nondecay_params)}"
-    )
+    print(f"muon: {len(muon_params)} tensors | adamw decay: {len(decay_params)} | adamw nodecay: {len(nondecay_params)}")
     print(f"muon lr={muon_lr:.2e}  adamw lr={adamw_lr:.2e}")
 
     return muon_optimizer, adamw_optimizer
@@ -136,9 +126,7 @@ def train(
     if not resume_path:
         torch.manual_seed(seed)
         data = AvenueData(seed)
-        raw_lm = model.Transformer(
-            K=K, D=D, H=H, V=config.VOCAB_SIZE, ternary=is_ternary
-        )
+        raw_lm = model.Transformer(K=K, D=D, H=H, V=config.VOCAB_SIZE, ternary=is_ternary)
         raw_lm.to(device)
         model_config = {
             "K": K,
@@ -152,12 +140,8 @@ def train(
         }
         data.reset_rngs("both")
 
-        muon_optimizer, adamw_optimizer = build_optimizers(
-            raw_lm, model_config["MUON_LR"], model_config["ADAM_LR"]
-        )
-        lce_options = LinearCrossEntropyOptions(
-            batch_chunk_size=16384, chunking_method=None, acc_policy="accurate"
-        )
+        muon_optimizer, adamw_optimizer = build_optimizers(raw_lm, model_config["MUON_LR"], model_config["ADAM_LR"])
+        lce_options = LinearCrossEntropyOptions(batch_chunk_size=16384, chunking_method=None, acc_policy="accurate")
         start_step = 0
         tokens_trained = 0
         session_start_tokens = 0
@@ -188,9 +172,7 @@ def train(
         muon_optimizer, adamw_optimizer = build_optimizers(raw_lm, muon_lr, adamw_lr)
         muon_optimizer.load_state_dict(checkpoint["optimizers"]["muon"])
         adamw_optimizer.load_state_dict(checkpoint["optimizers"]["adamw"])
-        lce_options = LinearCrossEntropyOptions(
-            batch_chunk_size=16384, chunking_method=None, acc_policy="accurate"
-        )
+        lce_options = LinearCrossEntropyOptions(batch_chunk_size=16384, chunking_method=None, acc_policy="accurate")
         start_step = checkpoint["step"] + 1
         tokens_trained = checkpoint["tokens_trained"]
         token_budget = checkpoint["total_token_budget"]
@@ -201,9 +183,7 @@ def train(
         is_ternary = checkpoint["config"]["IS_TERNARY"]
         data.set_rng_states(checkpoint["rng_states"])
 
-    lm = torch.compile(
-        raw_lm
-    )  ### separate compile() optimized model from raw model to handle saving properly
+    lm = torch.compile(raw_lm)  ### separate compile() optimized model from raw model to handle saving properly
 
     max_steps = token_budget // (config.BATCH_SIZE * config.SEQ_LEN)
     warmup_steps = max(1, int(0.01 * max_steps))
@@ -215,10 +195,7 @@ def train(
     if not resume_path:
         run = wandb.init(
             project="Avenue",
-            name=(
-                f"{architecture_type}_{n_params_in_millions:.0f}M_muon"
-                f"_m{muon_lr:.1e}_a{adamw_lr:.1e}__H{H}_s{seed}"
-            ),
+            name=(f"{architecture_type}_{n_params_in_millions:.0f}M_muon_m{muon_lr:.1e}_a{adamw_lr:.1e}__H{H}_s{seed}"),
             config={
                 "muon_lr": muon_lr,
                 "adamw_lr": adamw_lr,
@@ -245,9 +222,7 @@ def train(
     RUN_DIR = config.CHECKPOINT_DIR / f"run_{run.id}_{n_params:.0f}M_{token_budget / 1e9:.0f}BT_muon_m{muon_lr:.1e}_a{adamw_lr:.1e}"
     RUN_DIR.mkdir(parents=True, exist_ok=True)
 
-    print(
-        f"TRAIN.PY: Starting training. Model has {n_params:,} parameters and will train for {max_steps:,} steps. Model config: {model_config}"
-    )
+    print(f"TRAIN.PY: Starting training. Model has {n_params:,} parameters and will train for {max_steps:,} steps. Model config: {model_config}")
 
     # prepare for flip rate calculation
     if is_ternary:
@@ -271,23 +246,17 @@ def train(
         with torch.autocast(device_type=device, dtype=torch.bfloat16):
             h = lm(x_b, return_hidden=True)  ### (B, N, V), fp32
 
-            h = h.reshape(-1, h.shape[-1]).to(
-                dtype=torch.bfloat16
-            )  ### (B, N, V) --> (B * N, V)
+            h = h.reshape(-1, h.shape[-1]).to(dtype=torch.bfloat16)  ### (B, N, V) --> (B * N, V)
             W = raw_lm.embeddings.weight.to(dtype=torch.bfloat16)
             y_b = y_b.flatten()  ### (B, N) --> (B*N,)
 
-            loss = F.linear_cross_entropy(
-                h, W, y_b, reduction="mean", options=lce_options
-            )
+            loss = F.linear_cross_entropy(h, W, y_b, reduction="mean", options=lce_options)
 
         # backprop
         muon_optimizer.zero_grad(set_to_none=True)
         adamw_optimizer.zero_grad(set_to_none=True)
         loss.backward()
-        grad_norm = torch.nn.utils.clip_grad_norm_(
-            parameters=lm.parameters(), max_norm=1.0
-        )  ### grad clipping to avoid huge weird gradients making us take a large step
+        grad_norm = torch.nn.utils.clip_grad_norm_(parameters=lm.parameters(), max_norm=1.0)  ### grad clipping to avoid huge weird gradients making us take a large step
         muon_optimizer.step()
         adamw_optimizer.step()
         tokens_trained += y_b.shape[0]
@@ -308,12 +277,8 @@ def train(
                     layer = raw_lm.main[0].Q_layer
                     current_weight = model.quantize_weights(layer.weight).sign()
                     if previous_weight is not None:
-                        metrics["flip_rate_50"] = (
-                            (current_weight != previous_weight).float().mean().item()
-                        )
-                        metrics["frac_zero"] = (
-                            (current_weight == 0).float().mean().item()
-                        )
+                        metrics["flip_rate_50"] = (current_weight != previous_weight).float().mean().item()
+                        metrics["frac_zero"] = (current_weight == 0).float().mean().item()
                         metrics["latent_absmax"] = layer.weight.abs().max().item()
                         metrics["latent_absmean"] = layer.weight.abs().mean().item()
                     previous_weight = current_weight
@@ -329,8 +294,7 @@ def train(
                 {
                     "val_loss": val_loss,
                     "val_bpb": val_bpb,
-                    "tok_per_sec": (tokens_trained - session_start_tokens)
-                    / (time.perf_counter() - start),
+                    "tok_per_sec": (tokens_trained - session_start_tokens) / (time.perf_counter() - start),
                 },
                 step=step,
             )
@@ -339,7 +303,7 @@ def train(
                 f"time elapsed: {time.perf_counter() - start:,.0f}s | tokens_trained: {tokens_trained:,} tokens |",
                 f"tok/s:{(tokens_trained - session_start_tokens) / (time.perf_counter() - start):,.0f}tok/s |",
                 f"grad_norm: {grad_norm.item():.2f} | MUON LR: {muon_optimizer.param_groups[0]['lr']:.6f} |",
-                f"ADAMW LR: {adamw_optimizer.param_groups[0]['lr']:.6f}"
+                f"ADAMW LR: {adamw_optimizer.param_groups[0]['lr']:.6f}",
             )
 
         # save every 800 steps
@@ -361,9 +325,7 @@ def train(
     # final eval
     data.reset_rngs("val")
     final_val_loss, final_val_bpb = evaluate(lm, 50, data)
-    wandb.log(
-        {"final_val_loss": final_val_loss, "final_val_bpb": final_val_bpb}, step=step
-    )
+    wandb.log({"final_val_loss": final_val_loss, "final_val_bpb": final_val_bpb}, step=step)
 
     save_checkpoint(
         raw_lm,
@@ -398,9 +360,7 @@ if __name__ == "__main__":
     parser.add_argument("--H", type=int)
     parser.add_argument("--token-budget", type=int)
     parser.add_argument("--seed", type=int, default=42)
-    parser.add_argument(
-        "--ternary", action="store_true", help="To train in ternary weights or not"
-    )
+    parser.add_argument("--ternary", action="store_true", help="To train in ternary weights or not")
     parser.add_argument(
         "--resume",
         type=str,

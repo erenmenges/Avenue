@@ -1,0 +1,5 @@
+# ruff.toml
+
+[lint.isort]
+known-first-party = ["config", "model", "data", "dataset", "eval_inference", "train_tokenizer"]
+known-third-party = ["wandb", "torch", "numpy", "tokenizers", "datasets"]

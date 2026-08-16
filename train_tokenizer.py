@@ -31,9 +31,7 @@ def sample_for_tokenizer():
     print("DONE: Sampling for tokenizer training")
 
 
-def train_tokenizer(
-    vocab_size: int = config.VOCAB_SIZE, special_tokens: list[str] | None = None
-):
+def train_tokenizer(vocab_size: int = config.VOCAB_SIZE, special_tokens: list[str] | None = None):
     """
     Trains tokenizer with BPE.
     """
@@ -47,9 +45,7 @@ def train_tokenizer(
             pre_tokenizers.ByteLevel(add_prefix_space=False),
         ]
     )  ###
-    tokenizer.decoder = (
-        decoders.ByteLevel()
-    )  ### decode back to real text from internal mappings (e.g. space to weird G)
+    tokenizer.decoder = decoders.ByteLevel()  ### decode back to real text from internal mappings (e.g. space to weird G)
 
     trainer = trainers.BpeTrainer(
         vocab_size=vocab_size,
@@ -94,9 +90,7 @@ def measure_compression():
                 break
 
     average_bytes_per_token = float(total_bytes / total_tokens)
-    print(
-        f"DONE: Measuring avg bytes per token. Avg bytes per token: {average_bytes_per_token}, documents sampled: {docs_processed}"
-    )
+    print(f"DONE: Measuring avg bytes per token. Avg bytes per token: {average_bytes_per_token}, documents sampled: {docs_processed}")
 
 
 if __name__ == "__main__":

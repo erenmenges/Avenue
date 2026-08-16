@@ -12,9 +12,7 @@ from data import AvenueData
 device = "mps" if torch.backends.mps.is_available() else "cpu"
 
 
-def load_model(
-    checkpoint_path, quantize_to_ternary: bool = False, return_info: bool = False
-):
+def load_model(checkpoint_path, quantize_to_ternary: bool = False, return_info: bool = False):
     checkpoint = torch.load(checkpoint_path, map_location=device)
     checkpoint_config = checkpoint["config"]
     lm = model.Transformer(
@@ -28,9 +26,7 @@ def load_model(
     lm.load_state_dict(state_dict=checkpoint["model"])
 
     if quantize_to_ternary:
-        assert (
-            checkpoint_config["IS_TERNARY"] == False
-        )  ### do not try to PTQ an already quantization trained model
+        assert checkpoint_config["IS_TERNARY"] == False  ### do not try to PTQ an already quantization trained model
         with torch.no_grad():
             for block in lm.main:
                 for layer in (
@@ -64,9 +60,7 @@ def evaluate(lm: model.Transformer, eval_size: int, data: AvenueData):
 
             with torch.autocast(device_type=device, dtype=torch.bfloat16):
                 y_val_hat = lm(x_val_b)  ### (B, N, V)
-                val_model_logits = y_val_hat.reshape(
-                    -1, y_val_hat.shape[-1]
-                )  ### (B, N, V) --> (B * N, V)
+                val_model_logits = y_val_hat.reshape(-1, y_val_hat.shape[-1])  ### (B, N, V) --> (B * N, V)
                 y_val_b = y_val_b.flatten()
                 val_loss = loss_fn(val_model_logits, y_val_b)
             val_losses[i] = val_loss.item()
@@ -96,9 +90,7 @@ def predict(
     prompt = input("\033[31mEnter a prompt: \033[0m")
     tokenizer = Tokenizer.from_file(str(config.TOKENIZER_PATH))
     prompt_tokenized = tokenizer.encode(prompt).ids
-    context = torch.tensor(prompt_tokenized, dtype=torch.long, device=device)[
-        None, :
-    ]  ### (1, N)
+    context = torch.tensor(prompt_tokenized, dtype=torch.long, device=device)[None, :]  ### (1, N)
     assert max_tokens <= config.SEQ_LEN
 
     print(prompt, end="")
@@ -106,19 +98,13 @@ def predict(
     with torch.no_grad():
         for _ in range(max_tokens - context.shape[1]):
             seen_logits = torch.ones((1, config.VOCAB_SIZE), device=device)  ### (1, V)
-            seen_logits[0, context[0][-64:]] = (
-                repetition_penalty  ### only apply the penalty to last 64 tokens (only remember last 64 tokens)
-            )
+            seen_logits[0, context[0][-64:]] = repetition_penalty  ### only apply the penalty to last 64 tokens (only remember last 64 tokens)
 
             logits = lm(context)[:, -1]
             logits = logits / temperature  ### apply temperature
-            logits = torch.where(
-                logits > 0, logits / seen_logits, logits * seen_logits
-            )  ### repetition penalty
+            logits = torch.where(logits > 0, logits / seen_logits, logits * seen_logits)  ### repetition penalty
 
-            probabilities = torch.softmax(
-                logits, dim=-1
-            )  ### softmax the logits to turn them into a probability distribution
+            probabilities = torch.softmax(logits, dim=-1)  ### softmax the logits to turn them into a probability distribution
 
             # min p sampling
             threshold = min_p * probabilities.max(dim=-1, keepdim=True).values
@@ -127,40 +113,24 @@ def predict(
                 probabilities,
                 torch.zeros_like(probabilities),
             )  ### min p sampling
-            probabilities = probabilities / probabilities.sum(
-                dim=-1, keepdim=True
-            )  ### renormalize probabilities to account for min p
+            probabilities = probabilities / probabilities.sum(dim=-1, keepdim=True)  ### renormalize probabilities to account for min p
 
             # top k sampling
-            kth_largest_probability = torch.topk(probabilities, k=top_k, dim=-1).values[
-                ..., -1:
-            ]
+            kth_largest_probability = torch.topk(probabilities, k=top_k, dim=-1).values[..., -1:]
             probabilities = torch.where(
                 probabilities >= kth_largest_probability,
                 probabilities,
                 torch.zeros_like(probabilities),
             )  ### top k sampling
-            probabilities = probabilities / probabilities.sum(
-                dim=-1, keepdim=True
-            )  ### renormalize probabilities to account for top k
+            probabilities = probabilities / probabilities.sum(dim=-1, keepdim=True)  ### renormalize probabilities to account for top k
 
             # top p sampling
-            sorted_probabilities, sorted_indices = torch.sort(
-                probabilities, descending=True, dim=-1
-            )
+            sorted_probabilities, sorted_indices = torch.sort(probabilities, descending=True, dim=-1)
             cumulative_sum = torch.cumsum(sorted_probabilities, dim=-1)
-            keep = (
-                (cumulative_sum - sorted_probabilities) < top_p
-            )  ### we shift the cumsum to the right so the cutoff happens after adding the probability that makes it reach top_p
-            keep = torch.zeros_like(keep).scatter(
-                dim=-1, index=sorted_indices, src=keep
-            )  ### turn the sorted keep tensor to a probabilities-like indexed one
-            probabilities = torch.where(
-                keep, probabilities, torch.zeros_like(probabilities)
-            )  ### top p sampling
-            probabilities = probabilities / probabilities.sum(
-                dim=-1, keepdim=True
-            )  ### renormalize probabilities to account for top p
+            keep = (cumulative_sum - sorted_probabilities) < top_p  ### we shift the cumsum to the right so the cutoff happens after adding the probability that makes it reach top_p
+            keep = torch.zeros_like(keep).scatter(dim=-1, index=sorted_indices, src=keep)  ### turn the sorted keep tensor to a probabilities-like indexed one
+            probabilities = torch.where(keep, probabilities, torch.zeros_like(probabilities))  ### top p sampling
+            probabilities = probabilities / probabilities.sum(dim=-1, keepdim=True)  ### renormalize probabilities to account for top p
 
             prediction = torch.multinomial(probabilities, num_samples=1)
             print(tokenizer.decode(prediction[0].tolist()), end="", flush=True)
