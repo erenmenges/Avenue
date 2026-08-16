@@ -219,7 +219,7 @@ def train(
         run = wandb.init(project="Avenue", id=checkpoint["wandb_run_id"], resume="must")
 
     # initialize the dir where checkpoints will be saved
-    RUN_DIR = config.CHECKPOINT_DIR / f"run_{run.id}_{n_params:.0f}M_{token_budget / 1e9:.0f}BT_muon_m{muon_lr:.1e}_a{adamw_lr:.1e}"
+    RUN_DIR = config.CHECKPOINT_DIR / f"run_{run.id}_{n_params_in_millions:.0f}M_{token_budget / 1e9:.0f}BT_muon_m{muon_lr:.1e}_a{adamw_lr:.1e}"
     RUN_DIR.mkdir(parents=True, exist_ok=True)
 
     print(f"TRAIN.PY: Starting training. Model has {n_params:,} parameters and will train for {max_steps:,} steps. Model config: {model_config}")
